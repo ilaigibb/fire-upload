@@ -1,0 +1,21 @@
+[Unit]
+Description=Fire Upload
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/fire-upload.env
+ExecStart=/usr/bin/node /opt/fire-upload/current/server.js
+Restart=on-failure
+RestartSec=3
+User=fire-upload
+Group=fire-upload
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/fire-upload
+
+[Install]
+WantedBy=multi-user.target
