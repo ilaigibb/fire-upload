@@ -24,7 +24,21 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm build
-      - run: tar -C dist -czf fire-upload.tar.gz server.js
+      - name: Package release
+        run: |
+          mkdir release
+          cp dist/server.js release/
+          cp deploy/install.sh release/
+          cp deploy/update.sh release/
+          cp deploy/fire-upload.service release/
+          cp deploy/fire-upload-update.service release/
+          cp deploy/fire-upload-update.timer release/
+          cp deploy/duckdns-update.sh release/
+          cp deploy/duckdns-update.service release/
+          cp deploy/duckdns-update.timer release/
+          cp deploy/proxmox.sh fire-upload-proxmox.sh
+          printf '%s\n' "$GITHUB_REF_NAME" > release/VERSION
+          tar -C release -czf fire-upload.tar.gz .
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" fire-upload.tar.gz --generate-notes --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" fire-upload.tar.gz fire-upload-proxmox.sh --generate-notes --verify-tag

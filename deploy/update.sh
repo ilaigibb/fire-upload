@@ -32,7 +32,9 @@ if [[ -n "${FIRE_UPLOAD_GITHUB_TOKEN:-}" ]]; then
 fi
 curl -fsSL "${download_headers[@]}" "${asset_url}" -o "${temporary}/fire-upload.tar.gz"
 tar -xzf "${temporary}/fire-upload.tar.gz" -C "${temporary}"
-[[ -f "${temporary}/server.js" ]] || { echo "Release is missing server.js" >&2; exit 1; }
+for required in server.js update.sh fire-upload.service fire-upload-update.service fire-upload-update.timer; do
+  [[ -f "${temporary}/${required}" ]] || { echo "Release is missing ${required}" >&2; exit 1; }
+done
 
 previous="$(readlink -f /opt/fire-upload/current 2>/dev/null || true)"
 mkdir -p /opt/fire-upload/releases
@@ -40,6 +42,18 @@ mv "${temporary}" "${release_dir}"
 trap - EXIT
 ln -sfn "${release_dir}" /opt/fire-upload/current
 chown -R root:root "${release_dir}"
+
+install -m 0755 "${release_dir}/update.sh" /usr/local/sbin/fire-upload-update
+install -m 0644 "${release_dir}/fire-upload.service" /etc/systemd/system/fire-upload.service
+install -m 0644 "${release_dir}/fire-upload-update.service" /etc/systemd/system/fire-upload-update.service
+install -m 0644 "${release_dir}/fire-upload-update.timer" /etc/systemd/system/fire-upload-update.timer
+if [[ -f "${release_dir}/duckdns-update.sh" ]]; then
+  install -m 0755 "${release_dir}/duckdns-update.sh" /usr/local/sbin/fire-upload-duckdns-update
+  install -m 0644 "${release_dir}/duckdns-update.service" /etc/systemd/system/fire-upload-duckdns-update.service
+  install -m 0644 "${release_dir}/duckdns-update.timer" /etc/systemd/system/fire-upload-duckdns-update.timer
+fi
+systemctl daemon-reload
+systemctl enable fire-upload-update.timer fire-upload-duckdns-update.timer >/dev/null
 
 systemctl restart fire-upload
 if ! curl -fsS --retry 10 --retry-delay 1 http://127.0.0.1:8080/health >/dev/null; then

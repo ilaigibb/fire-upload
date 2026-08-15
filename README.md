@@ -37,6 +37,29 @@ Copy `.env.example` into the service environment. `FIRE_UPLOAD_TOKEN` and `FIRE_
 
 ## Proxmox
 
-`deploy/proxmox.sh` creates a small unprivileged Debian LXC. `deploy/install.sh` installs a tagged GitHub release inside an existing Debian guest. The scripts do not configure router port forwarding and cannot determine CGNAT from inside the guest; compare the router WAN address with a public-IP lookup before relying on DuckDNS.
+Fire Upload installs like a Proxmox community helper script: paste one command into the **Proxmox host shell**, choose Default or Advanced, and the installer creates and configures the LXC. Do not create an LXC first.
+
+Create a tagged GitHub release before installing. For a public repository:
+
+```bash
+bash -c "$(curl -fsSL https://github.com/OWNER/fire-upload/releases/latest/download/fire-upload-proxmox.sh)"
+```
+
+For a private repository, authenticate the initial download without putting the token in shell history:
+
+```bash
+export FIRE_UPLOAD_REPO=OWNER/fire-upload
+read -rsp "GitHub token: " FIRE_UPLOAD_GITHUB_TOKEN; echo
+export FIRE_UPLOAD_GITHUB_TOKEN
+bash -c "$(curl -fsSL \
+  -H 'Accept: application/vnd.github.raw+json' \
+  -H "Authorization: Bearer $FIRE_UPLOAD_GITHUB_TOKEN" \
+  "https://api.github.com/repos/$FIRE_UPLOAD_REPO/contents/deploy/proxmox.sh")"
+unset FIRE_UPLOAD_GITHUB_TOKEN
+```
+
+The installer asks for the DuckDNS subdomain and token, creates a 1-core/512-MiB unprivileged Debian LXC by default, installs the latest release, configures HTTPS, and prints the upload token. It also enables daily update checks; run `fire-upload-update` inside the LXC to update immediately.
+
+After installation, reserve the displayed LXC address in the router and forward TCP ports 80 and 443 to it. The installer cannot change the router or determine CGNAT; compare the router WAN address with a public-IP lookup before relying on DuckDNS.
 
 Uploaded files, SQLite metadata, and configuration remain outside application releases under `/var/lib/fire-upload` and `/etc/fire-upload.env`.
