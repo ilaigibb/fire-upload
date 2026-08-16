@@ -1,11 +1,8 @@
 # Install File Upload on Proxmox
 
-## 1. Get these two things
+## 1. Create a DuckDNS name
 
-1. Create a free subdomain at [DuckDNS](https://www.duckdns.org/) and copy its token.
-2. Create a [fine-grained GitHub token](https://github.com/settings/personal-access-tokens/new):
-   - Repository access: **Only select repositories → `file-upload`**
-   - Repository permission: **Contents → Read-only**
+Create a free subdomain at [DuckDNS](https://www.duckdns.org/) and copy its token.
 
 ## 2. Open the correct shell
 
@@ -15,29 +12,25 @@ In Proxmox, click **your node → Shell**. Do not open an LXC console. The promp
 
 ```bash
 (
-  set -e
+  set -euo pipefail
   installer="$(mktemp /root/install-file-upload.XXXXXX.sh)"
   trap 'rm -f -- "$installer"' EXIT
 
-  read -rsp "Paste GitHub token: " FILE_UPLOAD_GITHUB_TOKEN
-  echo
-
   curl -fsSL --retry 3 \
-    -H 'Accept: application/vnd.github.raw+json' \
-    -H "Authorization: Bearer ${FILE_UPLOAD_GITHUB_TOKEN}" \
-    'https://api.github.com/repos/ilaigibb/file-upload/contents/deploy/proxmox.sh?ref=v0.3.0' \
+    'https://raw.githubusercontent.com/ilaigibb/file-upload/e68111c0009ccd2e61e42f2cb7640e5ed7c68f73/deploy/proxmox.sh' \
     -o "$installer"
 
+  echo '9f60d9e48e343e25d80320e92c104e928e2d2259a4fea4176b5406f3a85a625b  '"$installer" | sha256sum --check --status
   chmod 700 "$installer"
-  FILE_UPLOAD_GITHUB_TOKEN="$FILE_UPLOAD_GITHUB_TOKEN" bash "$installer"
+  bash "$installer"
 )
 ```
 
-Paste the token and press Enter. Nothing will appear while you type or paste it.
+The installer is pinned to an immutable commit and verified before it runs as root.
 
 ## 4. Answer the installer
 
-1. Choose **Default** unless you specifically want to choose the disk, storage, or IP address.
+1. Choose **Default** for a simple home setup. Choose **Advanced** to place the public LXC on an isolated bridge or VLAN.
 2. For **container data**, choose where uploaded files should live. For **Debian template**, choose `local` unless you know you need something else.
 3. Enter the DuckDNS name without `.duckdns.org`.
 4. Paste the DuckDNS token.
@@ -53,6 +46,8 @@ The installer creates the LXC for you. Do not create one manually.
 3. Forward TCP port **443** to that address.
 
 Do not forward Proxmox port 8006 or File Upload port 8080.
+
+For stronger isolation, place the LXC on a VLAN or bridge that cannot initiate connections to Proxmox or trusted home devices.
 
 ## 6. Verify it
 
