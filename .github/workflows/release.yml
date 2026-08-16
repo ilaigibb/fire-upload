@@ -12,11 +12,11 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
@@ -36,9 +36,9 @@ jobs:
           cp deploy/duckdns-update.sh release/
           cp deploy/duckdns-update.service release/
           cp deploy/duckdns-update.timer release/
-          cp deploy/proxmox.sh fire-upload-proxmox.sh
+          cp deploy/proxmox.sh install-fire-upload.sh
           printf '%s\n' "$GITHUB_REF_NAME" > release/VERSION
           tar -C release -czf fire-upload.tar.gz .
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" fire-upload.tar.gz fire-upload-proxmox.sh --generate-notes --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" fire-upload.tar.gz install-fire-upload.sh --generate-notes --verify-tag

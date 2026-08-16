@@ -6,11 +6,30 @@ if [[ ${EUID} -ne 0 ]]; then
   exit 1
 fi
 
+if [[ "${FIRE_UPLOAD_LXC_INSTALL:-}" != "1" ]]; then
+  echo "This guest installer may only be started by the Fire Upload Proxmox installer." >&2
+  exit 1
+fi
+if command -v pveversion >/dev/null 2>&1; then
+  echo "Refusing to run the guest installer on a Proxmox host." >&2
+  exit 1
+fi
+if [[ "$(systemd-detect-virt --container 2>/dev/null || true)" != "lxc" ]]; then
+  echo "This installer must run inside the newly created LXC." >&2
+  exit 1
+fi
+source /etc/os-release
+if [[ "${ID:-}" != "debian" || "${VERSION_ID:-}" != "13" ]]; then
+  echo "This installer requires Debian 13." >&2
+  exit 1
+fi
+
 : "${FIRE_UPLOAD_REPO:?FIRE_UPLOAD_REPO is required}"
 : "${FIRE_UPLOAD_PUBLIC_URL:?FIRE_UPLOAD_PUBLIC_URL is required}"
 : "${FIRE_UPLOAD_RELEASE_TAG:?FIRE_UPLOAD_RELEASE_TAG is required}"
 : "${DUCKDNS_SUBDOMAIN:?DUCKDNS_SUBDOMAIN is required}"
 : "${DUCKDNS_TOKEN:?DUCKDNS_TOKEN is required}"
+[[ "${FIRE_UPLOAD_RELEASE_TAG}" =~ ^v[A-Za-z0-9._-]+$ ]] || { echo "Invalid release tag." >&2; exit 1; }
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for required in server.js fire-upload.service update.sh fire-upload-update.service fire-upload-update.timer duckdns-update.sh duckdns-update.service duckdns-update.timer; do
@@ -18,10 +37,24 @@ for required in server.js fire-upload.service update.sh fire-upload-update.servi
 done
 
 echo "Installing system packages..."
+export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates caddy curl jq openssl
-curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+apt-get install -y ca-certificates caddy curl gnupg jq openssl
+install -d -m 0755 /usr/share/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | \
+  gpg --dearmor --yes -o /usr/share/keyrings/nodesource.gpg
+chmod 0644 /usr/share/keyrings/nodesource.gpg
+cat >/etc/apt/sources.list.d/nodesource.sources <<'EOF'
+Types: deb
+URIs: https://deb.nodesource.com/node_24.x
+Suites: nodistro
+Components: main
+Architectures: amd64
+Signed-By: /usr/share/keyrings/nodesource.gpg
+EOF
+apt-get update
 apt-get install -y nodejs
+[[ "$(node --version)" == v24.* ]] || { echo "Node.js 24 installation failed." >&2; exit 1; }
 
 if ! id fire-upload >/dev/null 2>&1; then
   useradd --system --home /var/lib/fire-upload --shell /usr/sbin/nologin fire-upload
@@ -82,7 +115,8 @@ systemctl restart fire-upload caddy
 systemctl start fire-upload-update.timer fire-upload-duckdns-update.timer
 
 curl -fsS --retry 15 --retry-delay 1 http://127.0.0.1:8080/health >/dev/null
-rm -rf /root/fire-upload-install /root/fire-upload.tar.gz
+rm -rf -- /root/fire-upload-install
+rm -f -- /root/fire-upload.tar.gz /root/fire-upload-install.env
 
 cat <<EOF
 
