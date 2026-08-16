@@ -14,7 +14,9 @@ source /etc/file-upload-release.env
 : "${FILE_UPLOAD_REPO:?FILE_UPLOAD_REPO is required}"
 
 temporary="$(mktemp -d)"
+release_contents="${temporary}/release"
 trap 'rm -rf "${temporary}"' EXIT
+mkdir "${release_contents}"
 api_config="${temporary}/github-api.conf"
 asset_config="${temporary}/github-asset.conf"
 {
@@ -30,6 +32,10 @@ chmod 0600 "${api_config}" "${asset_config}"
 release_json="$(curl --config "${api_config}" -fsSL "https://api.github.com/repos/${FILE_UPLOAD_REPO}/releases/latest")"
 tag="$(jq -er '.tag_name' <<<"${release_json}")"
 asset_url="$(jq -er '.assets[] | select(.name == "file-upload.tar.gz") | .url' <<<"${release_json}")"
+asset_digest="$(jq -er '.assets[] | select(.name == "file-upload.tar.gz") | .digest' <<<"${release_json}")"
+[[ "${tag}" =~ ^v[A-Za-z0-9._-]+$ ]] || { echo "Release tag is invalid." >&2; exit 1; }
+[[ "${asset_url}" =~ ^https://api\.github\.com/ ]] || { echo "Release asset URL is not hosted by the GitHub API." >&2; exit 1; }
+[[ "${asset_digest}" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Release is missing a valid SHA-256 digest." >&2; exit 1; }
 release_dir="/opt/file-upload/releases/${tag}"
 
 if [[ -d "${release_dir}" ]]; then
@@ -38,19 +44,24 @@ if [[ -d "${release_dir}" ]]; then
 fi
 
 curl --config "${asset_config}" -fsSL "${asset_url}" -o "${temporary}/file-upload.tar.gz"
+actual_digest="$(sha256sum "${temporary}/file-upload.tar.gz" | awk '{ print $1 }')"
+[[ "${actual_digest}" == "${asset_digest#sha256:}" ]] || { echo "Release failed its SHA-256 integrity check." >&2; exit 1; }
 if tar -tzf "${temporary}/file-upload.tar.gz" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
   echo "Release archive contains an unsafe path." >&2
   exit 1
 fi
-tar -xzf "${temporary}/file-upload.tar.gz" -C "${temporary}"
+if tar -tvzf "${temporary}/file-upload.tar.gz" | awk '$1 !~ /^[-d]/ { unsafe=1 } END { exit unsafe ? 0 : 1 }'; then
+  echo "Release archive contains links or special files." >&2
+  exit 1
+fi
+tar --no-same-owner --no-same-permissions -xzf "${temporary}/file-upload.tar.gz" -C "${release_contents}"
 for required in server.js update.sh file-upload.service file-upload-update.service file-upload-update.timer; do
-  [[ -f "${temporary}/${required}" ]] || { echo "Release is missing ${required}" >&2; exit 1; }
+  [[ -f "${release_contents}/${required}" ]] || { echo "Release is missing ${required}" >&2; exit 1; }
 done
 
 previous="$(readlink -f /opt/file-upload/current 2>/dev/null || true)"
 mkdir -p /opt/file-upload/releases
-mv "${temporary}" "${release_dir}"
-trap - EXIT
+mv "${release_contents}" "${release_dir}"
 ln -sfn "${release_dir}" /opt/file-upload/current
 chown -R root:root "${release_dir}"
 
@@ -71,7 +82,11 @@ if ! curl -fsS --retry 10 --retry-delay 1 http://127.0.0.1:8080/health >/dev/nul
   if [[ -n "${previous}" && -d "${previous}" ]]; then
     ln -sfn "${previous}" /opt/file-upload/current
     systemctl restart file-upload
+  else
+    rm -f /opt/file-upload/current
+    systemctl stop file-upload
   fi
+  rm -rf -- "${release_dir}"
   echo "Update failed its health check; restored the previous release." >&2
   exit 1
 fi

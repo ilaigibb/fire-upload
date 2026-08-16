@@ -29,7 +29,14 @@ fi
 : "${FILE_UPLOAD_RELEASE_TAG:?FILE_UPLOAD_RELEASE_TAG is required}"
 : "${DUCKDNS_SUBDOMAIN:?DUCKDNS_SUBDOMAIN is required}"
 : "${DUCKDNS_TOKEN:?DUCKDNS_TOKEN is required}"
+[[ "${FILE_UPLOAD_REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "Invalid repository." >&2; exit 1; }
 [[ "${FILE_UPLOAD_RELEASE_TAG}" =~ ^v[A-Za-z0-9._-]+$ ]] || { echo "Invalid release tag." >&2; exit 1; }
+[[ "${FILE_UPLOAD_PUBLIC_URL}" =~ ^https://[a-z0-9]([a-z0-9-]*[a-z0-9])?\.duckdns\.org$ ]] || { echo "Invalid public URL." >&2; exit 1; }
+[[ "${DUCKDNS_SUBDOMAIN}" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || { echo "Invalid DuckDNS subdomain." >&2; exit 1; }
+[[ "${DUCKDNS_TOKEN}" =~ ^[A-Za-z0-9-]+$ ]] || { echo "Invalid DuckDNS token." >&2; exit 1; }
+for secret in "${FILE_UPLOAD_GITHUB_TOKEN:-}" "${FILE_UPLOAD_PR_GITHUB_TOKEN:-}" "${FILE_UPLOAD_TOKEN:-}"; do
+  [[ "${secret}" != *$'\n'* && "${secret}" != *$'\r'* ]] || { echo "A token contains an invalid newline." >&2; exit 1; }
+done
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for required in server.js file-upload.service update.sh file-upload-update.service file-upload-update.timer duckdns-update.sh duckdns-update.service duckdns-update.timer; do
@@ -101,7 +108,6 @@ install -m 0644 "${script_dir}/duckdns-update.service" /etc/systemd/system/file-
 install -m 0644 "${script_dir}/duckdns-update.timer" /etc/systemd/system/file-upload-duckdns-update.timer
 
 hostname="${FILE_UPLOAD_PUBLIC_URL#*://}"
-hostname="${hostname%%/*}"
 cat >/etc/caddy/Caddyfile <<EOF
 ${hostname} {
   reverse_proxy 127.0.0.1:8080

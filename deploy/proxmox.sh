@@ -78,7 +78,7 @@ require_host() {
   mountpoint -q /etc/pve || fail "The Proxmox cluster filesystem is not mounted at /etc/pve."
 
   local command_name
-  for command_name in awk curl cut find flock grep hostname ip mountpoint pct pveam pvesh pvesm python3 qm sed seq sort tar tee timeout wc xargs; do
+  for command_name in awk curl cut find flock grep hostname ip mountpoint pct pveam pvesh pvesm python3 qm sed seq sha256sum sort tee timeout wc xargs; do
     command -v "${command_name}" >/dev/null 2>&1 || fail "The Proxmox host is missing required command: ${command_name}"
   done
 
@@ -258,6 +258,15 @@ github_curl_config() {
   chmod 0600 "${path}"
 }
 
+verify_sha256() {
+  local path="$1"
+  local digest="$2"
+  local expected="${digest#sha256:}"
+  local actual
+  actual="$(sha256sum "${path}" | awk '{ print $1 }')"
+  [[ "${actual}" == "${expected}" ]] || fail "The downloaded release failed its SHA-256 integrity check."
+}
+
 require_host
 
 mode="${FILE_UPLOAD_INSTALL_MODE:-}"
@@ -270,9 +279,9 @@ repo="${FILE_UPLOAD_REPO:-ilaigibb/file-upload}"
 [[ "${repo}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "Repository must look like owner/repository."
 
 github_token="${FILE_UPLOAD_GITHUB_TOKEN:-}"
-[[ -n "${github_token}" ]] || github_token="$(prompt_secret "GitHub token for the private File Upload repository")"
-[[ -n "${github_token}" ]] || fail "A GitHub token is required while the repository is private."
 [[ "${github_token}" != *$'\n'* && "${github_token}" != *$'\r'* ]] || fail "GitHub token is invalid."
+pr_github_token="${FILE_UPLOAD_PR_GITHUB_TOKEN:-}"
+[[ "${pr_github_token}" != *$'\n'* && "${pr_github_token}" != *$'\r'* ]] || fail "PR GitHub token is invalid."
 
 duckdns_subdomain="${DUCKDNS_SUBDOMAIN:-}"
 [[ -n "${duckdns_subdomain}" ]] || duckdns_subdomain="$(prompt "DuckDNS subdomain without .duckdns.org")"
@@ -289,6 +298,7 @@ cores="${FILE_UPLOAD_CORES:-${DEFAULT_CPU}}"
 memory="${FILE_UPLOAD_MEMORY:-${DEFAULT_RAM}}"
 swap="${FILE_UPLOAD_SWAP:-${DEFAULT_SWAP}}"
 disk="${FILE_UPLOAD_DISK:-${DEFAULT_DISK}}"
+vlan_tag="${FILE_UPLOAD_VLAN_TAG:-}"
 
 if [[ "${mode}" == "advanced" ]]; then
   ctid="$(prompt "Container ID" "${ctid}")"
@@ -297,6 +307,7 @@ if [[ "${mode}" == "advanced" ]]; then
   memory="$(prompt "Memory in MiB" "${memory}")"
   swap="$(prompt "Swap in MiB" "${swap}")"
   disk="$(prompt "Disk size in GiB (this limits total uploaded-file storage)" "${disk}")"
+  vlan_tag="$(prompt "VLAN tag (leave blank for none)" "${vlan_tag}")"
 fi
 
 [[ "${ctid}" =~ ^[0-9]+$ && "${ctid}" -ge 100 && "${ctid}" -le 999999999 ]] || \
@@ -307,6 +318,10 @@ ctid_in_use "${ctid}" && fail "Container or VM ID ${ctid} is already in use anyw
 [[ "${memory}" =~ ^[0-9]+$ && "${memory}" -ge 256 ]] || fail "Memory must be at least 256 MiB."
 [[ "${swap}" =~ ^[0-9]+$ ]] || fail "Swap must be zero or a positive whole number."
 [[ "${disk}" =~ ^[0-9]+$ && "${disk}" -ge 4 ]] || fail "Disk size must be at least 4 GiB."
+if [[ -n "${vlan_tag}" ]]; then
+  [[ "${vlan_tag}" =~ ^[0-9]+$ && "${vlan_tag}" -ge 1 && "${vlan_tag}" -le 4094 ]] || \
+    fail "VLAN tag must be between 1 and 4094."
+fi
 
 container_storage="$(select_storage rootdir "container data" "${FILE_UPLOAD_STORAGE:-}")"
 template_storage="$(select_storage vztmpl "Debian template" "${FILE_UPLOAD_TEMPLATE_STORAGE:-}")"
@@ -343,6 +358,7 @@ requested_kib=$((disk * 1024 * 1024))
 public_url="https://${duckdns_subdomain}.duckdns.org"
 network_summary="DHCP on ${bridge}"
 [[ "${network_mode}" == "dhcp" ]] || network_summary="${ip_address}, gateway ${gateway}, on ${bridge}"
+[[ -z "${vlan_tag}" ]] || network_summary+=" (VLAN ${vlan_tag})"
 
 echo
 echo "File Upload installation plan"
@@ -377,22 +393,28 @@ release_json="$(curl --config "${github_api_config}" --connect-timeout 10 --retr
   "https://api.github.com/repos/${repo}/releases/latest")" || fail "Could not read the latest release. Check the repository token."
 release_values="$(python3 -c '
 import json, sys
+from urllib.parse import urlparse
+
 release = json.load(sys.stdin)
 asset = next((item for item in release.get("assets", []) if item.get("name") == "file-upload.tar.gz"), None)
 if not asset:
     raise SystemExit("The latest release has no file-upload.tar.gz asset.")
+asset_url = asset.get("url", "")
+parsed = urlparse(asset_url)
+if parsed.scheme != "https" or parsed.netloc != "api.github.com":
+    raise SystemExit("The release asset URL is not hosted by the GitHub API.")
 print(release["tag_name"])
-print(asset["url"])
+print(asset_url)
+print(asset.get("digest", ""))
 ' <<<"${release_json}")"
 release_tag="$(sed -n '1p' <<<"${release_values}")"
 asset_url="$(sed -n '2p' <<<"${release_values}")"
+asset_digest="$(sed -n '3p' <<<"${release_values}")"
 [[ "${release_tag}" =~ ^v[A-Za-z0-9._-]+$ ]] || fail "The latest release tag is invalid."
+[[ "${asset_digest}" =~ ^sha256:[a-f0-9]{64}$ ]] || fail "The release is missing a valid SHA-256 digest."
 curl --config "${github_asset_config}" --connect-timeout 10 --retry 3 --retry-all-errors -fsSL \
   "${asset_url}" -o "${temporary}/file-upload.tar.gz"
-if tar -tzf "${temporary}/file-upload.tar.gz" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
-  fail "The release archive contains an unsafe path."
-fi
-tar -tzf "${temporary}/file-upload.tar.gz" | grep -Eq '(^|/)install\.sh$' || fail "The release is missing its guest installer."
+verify_sha256 "${temporary}/file-upload.tar.gz" "${asset_digest}"
 
 echo "Checking DuckDNS credentials..."
 duckdns_response="$(curl --connect-timeout 10 --retry 3 --retry-all-errors -fsS \
@@ -424,6 +446,7 @@ if ! pveam list "${template_storage}" | awk 'NR > 1 { print $1 }' | grep -Fxq "$
 fi
 
 net0="name=eth0,bridge=${bridge},firewall=1"
+[[ -z "${vlan_tag}" ]] || net0+=",tag=${vlan_tag}"
 if [[ "${network_mode}" == "dhcp" ]]; then
   net0+=",ip=dhcp"
 else
@@ -467,7 +490,7 @@ install_env="${temporary}/install.env"
   printf 'FILE_UPLOAD_PUBLIC_URL=%q\n' "${public_url}"
   printf 'FILE_UPLOAD_RELEASE_TAG=%q\n' "${release_tag}"
   printf 'FILE_UPLOAD_GITHUB_TOKEN=%q\n' "${github_token}"
-  printf 'FILE_UPLOAD_PR_GITHUB_TOKEN=%q\n' "${FILE_UPLOAD_PR_GITHUB_TOKEN:-}"
+  printf 'FILE_UPLOAD_PR_GITHUB_TOKEN=%q\n' "${pr_github_token}"
   printf 'DUCKDNS_SUBDOMAIN=%q\n' "${duckdns_subdomain}"
   printf 'DUCKDNS_TOKEN=%q\n' "${duckdns_token}"
 } >"${install_env}"
@@ -477,7 +500,20 @@ echo "Installing File Upload ${release_tag} inside LXC ${ctid}..."
 pct exec "${ctid}" -- mkdir -p /root/file-upload-install
 pct push "${ctid}" "${temporary}/file-upload.tar.gz" /root/file-upload.tar.gz --perms 0600
 pct push "${ctid}" "${install_env}" /root/file-upload-install.env --perms 0600
-pct exec "${ctid}" -- tar -xzf /root/file-upload.tar.gz -C /root/file-upload-install
+pct exec "${ctid}" -- bash -c '
+  set -euo pipefail
+  archive=/root/file-upload.tar.gz
+  if tar -tzf "${archive}" | grep -Eq "(^/|(^|/)\.\.(/|$))"; then
+    echo "Release archive contains an unsafe path." >&2
+    exit 1
+  fi
+  if tar -tvzf "${archive}" | awk '\''$1 !~ /^[-d]/ { unsafe=1 } END { exit unsafe ? 0 : 1 }'\''; then
+    echo "Release archive contains links or special files." >&2
+    exit 1
+  fi
+  tar --no-same-owner --no-same-permissions -xzf "${archive}" -C /root/file-upload-install
+  [[ -f /root/file-upload-install/install.sh ]] || { echo "Release is missing its guest installer." >&2; exit 1; }
+'
 pct exec "${ctid}" -- bash -c \
   'set -a; source /root/file-upload-install.env; set +a; exec bash /root/file-upload-install/install.sh'
 

@@ -87,10 +87,10 @@ export async function serveStoredFile(
   const commonHeaders = {
     'Accept-Ranges': 'bytes',
     'Cache-Control': 'public, max-age=31536000, immutable',
+    'Content-Security-Policy': "sandbox; default-src 'none'",
     'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(originalName)}`,
     'Content-Type': mimeType,
     'X-Content-Type-Options': 'nosniff',
-    ...(mimeType === 'text/html' ? { 'Content-Security-Policy': 'sandbox' } : {}),
   };
 
   const requestedRange = request.headers.range;
