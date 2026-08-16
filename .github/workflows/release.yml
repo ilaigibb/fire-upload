@@ -30,15 +30,15 @@ jobs:
           cp dist/server.js release/
           cp deploy/install.sh release/
           cp deploy/update.sh release/
-          cp deploy/fire-upload.service release/
-          cp deploy/fire-upload-update.service release/
-          cp deploy/fire-upload-update.timer release/
+          cp deploy/file-upload.service release/
+          cp deploy/file-upload-update.service release/
+          cp deploy/file-upload-update.timer release/
           cp deploy/duckdns-update.sh release/
           cp deploy/duckdns-update.service release/
           cp deploy/duckdns-update.timer release/
-          cp deploy/proxmox.sh install-fire-upload.sh
+          cp deploy/proxmox.sh install-file-upload.sh
           printf '%s\n' "$GITHUB_REF_NAME" > release/VERSION
-          tar -C release -czf fire-upload.tar.gz .
+          tar -C release -czf file-upload.tar.gz .
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" fire-upload.tar.gz install-fire-upload.sh --generate-notes --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" file-upload.tar.gz install-file-upload.sh --generate-notes --verify-tag

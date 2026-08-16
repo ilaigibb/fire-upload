@@ -33,7 +33,7 @@ async function fetchPull(asset: Asset, token: string | null): Promise<PullRespon
     {
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'fire-upload',
+        'User-Agent': 'file-upload',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       signal: AbortSignal.timeout(15_000),

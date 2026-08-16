@@ -1,8 +1,8 @@
 [Unit]
-Description=Update Fire Upload DuckDNS address
+Description=Update File Upload DuckDNS address
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/sbin/fire-upload-duckdns-update
+ExecStart=/usr/local/sbin/file-upload-duckdns-update

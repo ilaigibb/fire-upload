@@ -30,10 +30,10 @@ function required(name: string): string {
 }
 
 export function loadConfig(): Config {
-  const publicUrl = required('FIRE_UPLOAD_PUBLIC_URL').replace(/\/+$/, '');
+  const publicUrl = required('FILE_UPLOAD_PUBLIC_URL').replace(/\/+$/, '');
   const parsedUrl = new URL(publicUrl);
   if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-    throw new Error('FIRE_UPLOAD_PUBLIC_URL must use http or https');
+    throw new Error('FILE_UPLOAD_PUBLIC_URL must use http or https');
   }
   if (
     !parsedUrl.hostname ||
@@ -43,19 +43,19 @@ export function loadConfig(): Config {
     parsedUrl.search ||
     parsedUrl.hash
   ) {
-    throw new Error('FIRE_UPLOAD_PUBLIC_URL must be an origin without credentials, a path, query, or hash');
+    throw new Error('FILE_UPLOAD_PUBLIC_URL must be an origin without credentials, a path, query, or hash');
   }
 
-  const token = required('FIRE_UPLOAD_TOKEN');
-  if (token.length < 32) throw new Error('FIRE_UPLOAD_TOKEN must contain at least 32 characters');
+  const token = required('FILE_UPLOAD_TOKEN');
+  if (token.length < 32) throw new Error('FILE_UPLOAD_TOKEN must contain at least 32 characters');
 
   return {
-    cleanupIntervalMs: positiveInteger('FIRE_UPLOAD_CLEANUP_MINUTES', 10) * 60_000,
-    dataDir: resolve(process.env.FIRE_UPLOAD_DATA_DIR ?? './data'),
-    githubToken: process.env.FIRE_UPLOAD_GITHUB_TOKEN?.trim() || null,
-    maxBytes: positiveInteger('FIRE_UPLOAD_MAX_BYTES', 500 * 1024 * 1024),
-    pollIntervalMs: positiveInteger('FIRE_UPLOAD_PR_POLL_MINUTES', 60) * 60_000,
-    port: positiveInteger('FIRE_UPLOAD_PORT', 8080),
+    cleanupIntervalMs: positiveInteger('FILE_UPLOAD_CLEANUP_MINUTES', 10) * 60_000,
+    dataDir: resolve(process.env.FILE_UPLOAD_DATA_DIR ?? './data'),
+    githubToken: process.env.FILE_UPLOAD_GITHUB_TOKEN?.trim() || null,
+    maxBytes: positiveInteger('FILE_UPLOAD_MAX_BYTES', 500 * 1024 * 1024),
+    pollIntervalMs: positiveInteger('FILE_UPLOAD_PR_POLL_MINUTES', 60) * 60_000,
+    port: positiveInteger('FILE_UPLOAD_PORT', 8080),
     publicUrl,
     token,
   };

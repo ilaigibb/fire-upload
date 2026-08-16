@@ -1,9 +1,9 @@
 ---
-name: fire-upload
-description: Upload any local file—such as a screenshot, screen recording, log, document, Markdown file, config, build artifact, or archive—to the user's Fire Upload host and return a permanent public URL. Use when the user asks to upload a file or when a public file URL is needed for a pull request description.
+name: file-upload
+description: Upload any local file—such as a screenshot, screen recording, log, document, Markdown file, config, build artifact, or archive—to the user's File Upload host and return a permanent public URL. Use when the user asks to upload a file or when a public file URL is needed for a pull request description.
 ---
 
-# Fire Upload
+# File Upload
 
 Upload files to `FILE_HOST_URL` and return the permanent public URL from the response body. Authenticate with `FILE_HOST_TOKEN`. If either is unset, tell the user instead of guessing.
 

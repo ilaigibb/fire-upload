@@ -248,7 +248,7 @@ cleanupTimer.unref();
 void runMaintenance();
 
 server.listen(config.port, '127.0.0.1', () => {
-  console.log(`Fire Upload listening on 127.0.0.1:${config.port}`);
+  console.log(`File Upload listening on 127.0.0.1:${config.port}`);
 });
 
 function shutdown(): void {

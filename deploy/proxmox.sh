@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 umask 077
 
-APP="Fire Upload"
+APP="File Upload"
 DEFAULT_CPU=1
 DEFAULT_RAM=512
 DEFAULT_SWAP=256
@@ -88,8 +88,8 @@ require_host() {
       fail "The Proxmox cluster is not quorate. Restore quorum before creating a container."
   fi
 
-  exec 9>/run/lock/fire-upload-installer.lock
-  flock -n 9 || fail "Another Fire Upload installer is already running on this host."
+  exec 9>/run/lock/file-upload-installer.lock
+  flock -n 9 || fail "Another File Upload installer is already running on this host."
 }
 
 prompt() {
@@ -98,7 +98,7 @@ prompt() {
   local value
 
   if command -v whiptail >/dev/null 2>&1; then
-    value="$(whiptail --backtitle "Fire Upload Proxmox Installer" --title "${APP}" \
+    value="$(whiptail --backtitle "File Upload Proxmox Installer" --title "${APP}" \
       --inputbox "${message}" 10 72 "${default_value}" 3>&1 1>&2 2>&3)" || exit 0
   else
     read -r -p "${message} [${default_value}]: " value </dev/tty
@@ -113,7 +113,7 @@ prompt_secret() {
   local value
 
   if command -v whiptail >/dev/null 2>&1; then
-    value="$(whiptail --backtitle "Fire Upload Proxmox Installer" --title "${APP}" \
+    value="$(whiptail --backtitle "File Upload Proxmox Installer" --title "${APP}" \
       --passwordbox "${message}" 10 72 3>&1 1>&2 2>&3)" || exit 0
   else
     read -r -s -p "${message}: " value </dev/tty
@@ -129,7 +129,7 @@ choose() {
   shift 2
 
   if command -v whiptail >/dev/null 2>&1; then
-    whiptail --backtitle "Fire Upload Proxmox Installer" --title "${title}" \
+    whiptail --backtitle "File Upload Proxmox Installer" --title "${title}" \
       --menu "${message}" 18 72 8 "$@" 3>&1 1>&2 2>&3 || exit 0
     return
   fi
@@ -260,17 +260,17 @@ github_curl_config() {
 
 require_host
 
-mode="${FIRE_UPLOAD_INSTALL_MODE:-}"
+mode="${FILE_UPLOAD_INSTALL_MODE:-}"
 [[ -n "${mode}" ]] || mode="$(choose "Install mode" "Choose how much of the LXC configuration to customize." \
   "default" "1 CPU, 512 MiB RAM, 8 GiB disk, DHCP" \
   "advanced" "Choose resources, storage, bridge, and IP configuration")"
 [[ "${mode}" == "default" || "${mode}" == "advanced" ]] || fail "Install mode must be default or advanced."
 
-repo="${FIRE_UPLOAD_REPO:-ilaigibb/fire-upload}"
+repo="${FILE_UPLOAD_REPO:-ilaigibb/file-upload}"
 [[ "${repo}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || fail "Repository must look like owner/repository."
 
-github_token="${FIRE_UPLOAD_GITHUB_TOKEN:-}"
-[[ -n "${github_token}" ]] || github_token="$(prompt_secret "GitHub token for the private Fire Upload repository")"
+github_token="${FILE_UPLOAD_GITHUB_TOKEN:-}"
+[[ -n "${github_token}" ]] || github_token="$(prompt_secret "GitHub token for the private File Upload repository")"
 [[ -n "${github_token}" ]] || fail "A GitHub token is required while the repository is private."
 [[ "${github_token}" != *$'\n'* && "${github_token}" != *$'\r'* ]] || fail "GitHub token is invalid."
 
@@ -283,12 +283,12 @@ duckdns_token="${DUCKDNS_TOKEN:-}"
 [[ -n "${duckdns_token}" ]] || duckdns_token="$(prompt_secret "DuckDNS token")"
 [[ "${duckdns_token}" =~ ^[A-Za-z0-9-]+$ ]] || fail "DuckDNS token is invalid."
 
-ctid="${FIRE_UPLOAD_CTID:-$(pvesh get /cluster/nextid)}"
-hostname="${FIRE_UPLOAD_HOSTNAME:-fire-upload}"
-cores="${FIRE_UPLOAD_CORES:-${DEFAULT_CPU}}"
-memory="${FIRE_UPLOAD_MEMORY:-${DEFAULT_RAM}}"
-swap="${FIRE_UPLOAD_SWAP:-${DEFAULT_SWAP}}"
-disk="${FIRE_UPLOAD_DISK:-${DEFAULT_DISK}}"
+ctid="${FILE_UPLOAD_CTID:-$(pvesh get /cluster/nextid)}"
+hostname="${FILE_UPLOAD_HOSTNAME:-file-upload}"
+cores="${FILE_UPLOAD_CORES:-${DEFAULT_CPU}}"
+memory="${FILE_UPLOAD_MEMORY:-${DEFAULT_RAM}}"
+swap="${FILE_UPLOAD_SWAP:-${DEFAULT_SWAP}}"
+disk="${FILE_UPLOAD_DISK:-${DEFAULT_DISK}}"
 
 if [[ "${mode}" == "advanced" ]]; then
   ctid="$(prompt "Container ID" "${ctid}")"
@@ -308,27 +308,27 @@ ctid_in_use "${ctid}" && fail "Container or VM ID ${ctid} is already in use anyw
 [[ "${swap}" =~ ^[0-9]+$ ]] || fail "Swap must be zero or a positive whole number."
 [[ "${disk}" =~ ^[0-9]+$ && "${disk}" -ge 4 ]] || fail "Disk size must be at least 4 GiB."
 
-container_storage="$(select_storage rootdir "container data" "${FIRE_UPLOAD_STORAGE:-}")"
-template_storage="$(select_storage vztmpl "Debian template" "${FIRE_UPLOAD_TEMPLATE_STORAGE:-}")"
-preferred_bridge="${FIRE_UPLOAD_BRIDGE:-}"
+container_storage="$(select_storage rootdir "container data" "${FILE_UPLOAD_STORAGE:-}")"
+template_storage="$(select_storage vztmpl "Debian template" "${FILE_UPLOAD_TEMPLATE_STORAGE:-}")"
+preferred_bridge="${FILE_UPLOAD_BRIDGE:-}"
 [[ -n "${preferred_bridge}" || "${mode}" != "default" ]] || preferred_bridge="vmbr0"
 bridge="$(select_bridge "${preferred_bridge}")"
 
-network_mode="${FIRE_UPLOAD_NETWORK_MODE:-dhcp}"
+network_mode="${FILE_UPLOAD_NETWORK_MODE:-dhcp}"
 ip_address=""
 gateway=""
 nameserver=""
-if [[ "${mode}" == "advanced" && -z "${FIRE_UPLOAD_NETWORK_MODE:-}" ]]; then
+if [[ "${mode}" == "advanced" && -z "${FILE_UPLOAD_NETWORK_MODE:-}" ]]; then
   network_mode="$(choose "Network configuration" "DHCP is simplest; reserve the assigned address in your router afterward." \
     "dhcp" "Get an address from the router" \
     "static" "Assign a fixed IPv4 address now")"
 fi
 if [[ "${network_mode}" == "static" ]]; then
-  ip_address="${FIRE_UPLOAD_IP:-}"
+  ip_address="${FILE_UPLOAD_IP:-}"
   [[ -n "${ip_address}" ]] || ip_address="$(prompt "Static IPv4 address with CIDR, for example 192.168.1.50/24")"
-  gateway="${FIRE_UPLOAD_GATEWAY:-}"
+  gateway="${FILE_UPLOAD_GATEWAY:-}"
   [[ -n "${gateway}" ]] || gateway="$(prompt "IPv4 gateway, for example 192.168.1.1")"
-  nameserver="${FIRE_UPLOAD_NAMESERVER:-}"
+  nameserver="${FILE_UPLOAD_NAMESERVER:-}"
   [[ -n "${nameserver}" ]] || nameserver="$(prompt "DNS server" "${gateway}")"
   validate_static_network "${ip_address}" "${gateway}" "${nameserver}" || fail "Static network configuration is invalid."
 elif [[ "${network_mode}" != "dhcp" ]]; then
@@ -345,7 +345,7 @@ network_summary="DHCP on ${bridge}"
 [[ "${network_mode}" == "dhcp" ]] || network_summary="${ip_address}, gateway ${gateway}, on ${bridge}"
 
 echo
-echo "Fire Upload installation plan"
+echo "File Upload installation plan"
 echo "  Proxmox node:     $(hostname)"
 echo "  New LXC:          ${ctid} (${hostname})"
 echo "  Resources:        ${cores} CPU, ${memory} MiB RAM, ${swap} MiB swap"
@@ -358,15 +358,15 @@ echo
 echo "The installer creates only LXC ${ctid}. It does not modify existing guests,"
 echo "reconfigure Proxmox storage, open router ports, or automatically delete a failed LXC."
 echo
-read -r -p "Create this LXC and install Fire Upload? [y/N]: " confirmation </dev/tty
+read -r -p "Create this LXC and install File Upload? [y/N]: " confirmation </dev/tty
 [[ "${confirmation}" =~ ^[Yy]$ ]] || exit 0
 
-log_file="/var/log/fire-upload-install-${ctid}-$(date +%Y%m%d-%H%M%S).log"
+log_file="/var/log/file-upload-install-${ctid}-$(date +%Y%m%d-%H%M%S).log"
 touch "${log_file}"
 chmod 0600 "${log_file}"
 exec > >(tee -a "${log_file}") 2>&1
 
-temporary="$(mktemp -d /tmp/fire-upload-install.XXXXXX)"
+temporary="$(mktemp -d /tmp/file-upload-install.XXXXXX)"
 github_api_config="${temporary}/github-api.conf"
 github_asset_config="${temporary}/github-asset.conf"
 github_curl_config "${github_api_config}" "application/vnd.github+json" "${github_token}"
@@ -378,9 +378,9 @@ release_json="$(curl --config "${github_api_config}" --connect-timeout 10 --retr
 release_values="$(python3 -c '
 import json, sys
 release = json.load(sys.stdin)
-asset = next((item for item in release.get("assets", []) if item.get("name") == "fire-upload.tar.gz"), None)
+asset = next((item for item in release.get("assets", []) if item.get("name") == "file-upload.tar.gz"), None)
 if not asset:
-    raise SystemExit("The latest release has no fire-upload.tar.gz asset.")
+    raise SystemExit("The latest release has no file-upload.tar.gz asset.")
 print(release["tag_name"])
 print(asset["url"])
 ' <<<"${release_json}")"
@@ -388,11 +388,11 @@ release_tag="$(sed -n '1p' <<<"${release_values}")"
 asset_url="$(sed -n '2p' <<<"${release_values}")"
 [[ "${release_tag}" =~ ^v[A-Za-z0-9._-]+$ ]] || fail "The latest release tag is invalid."
 curl --config "${github_asset_config}" --connect-timeout 10 --retry 3 --retry-all-errors -fsSL \
-  "${asset_url}" -o "${temporary}/fire-upload.tar.gz"
-if tar -tzf "${temporary}/fire-upload.tar.gz" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+  "${asset_url}" -o "${temporary}/file-upload.tar.gz"
+if tar -tzf "${temporary}/file-upload.tar.gz" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
   fail "The release archive contains an unsafe path."
 fi
-tar -tzf "${temporary}/fire-upload.tar.gz" | grep -Eq '(^|/)install\.sh$' || fail "The release is missing its guest installer."
+tar -tzf "${temporary}/file-upload.tar.gz" | grep -Eq '(^|/)install\.sh$' || fail "The release is missing its guest installer."
 
 echo "Checking DuckDNS credentials..."
 duckdns_response="$(curl --connect-timeout 10 --retry 3 --retry-all-errors -fsS \
@@ -443,7 +443,7 @@ pct_create=(
   --net0 "${net0}"
   --unprivileged 1
   --onboot 1
-  --tags fire-upload
+  --tags file-upload
 )
 [[ -z "${nameserver}" ]] || pct_create+=(--nameserver "${nameserver}")
 "${pct_create[@]}"
@@ -462,31 +462,31 @@ done
 
 install_env="${temporary}/install.env"
 {
-  printf 'FIRE_UPLOAD_LXC_INSTALL=1\n'
-  printf 'FIRE_UPLOAD_REPO=%q\n' "${repo}"
-  printf 'FIRE_UPLOAD_PUBLIC_URL=%q\n' "${public_url}"
-  printf 'FIRE_UPLOAD_RELEASE_TAG=%q\n' "${release_tag}"
-  printf 'FIRE_UPLOAD_GITHUB_TOKEN=%q\n' "${github_token}"
-  printf 'FIRE_UPLOAD_PR_GITHUB_TOKEN=%q\n' "${FIRE_UPLOAD_PR_GITHUB_TOKEN:-}"
+  printf 'FILE_UPLOAD_LXC_INSTALL=1\n'
+  printf 'FILE_UPLOAD_REPO=%q\n' "${repo}"
+  printf 'FILE_UPLOAD_PUBLIC_URL=%q\n' "${public_url}"
+  printf 'FILE_UPLOAD_RELEASE_TAG=%q\n' "${release_tag}"
+  printf 'FILE_UPLOAD_GITHUB_TOKEN=%q\n' "${github_token}"
+  printf 'FILE_UPLOAD_PR_GITHUB_TOKEN=%q\n' "${FILE_UPLOAD_PR_GITHUB_TOKEN:-}"
   printf 'DUCKDNS_SUBDOMAIN=%q\n' "${duckdns_subdomain}"
   printf 'DUCKDNS_TOKEN=%q\n' "${duckdns_token}"
 } >"${install_env}"
 chmod 0600 "${install_env}"
 
-echo "Installing Fire Upload ${release_tag} inside LXC ${ctid}..."
-pct exec "${ctid}" -- mkdir -p /root/fire-upload-install
-pct push "${ctid}" "${temporary}/fire-upload.tar.gz" /root/fire-upload.tar.gz --perms 0600
-pct push "${ctid}" "${install_env}" /root/fire-upload-install.env --perms 0600
-pct exec "${ctid}" -- tar -xzf /root/fire-upload.tar.gz -C /root/fire-upload-install
+echo "Installing File Upload ${release_tag} inside LXC ${ctid}..."
+pct exec "${ctid}" -- mkdir -p /root/file-upload-install
+pct push "${ctid}" "${temporary}/file-upload.tar.gz" /root/file-upload.tar.gz --perms 0600
+pct push "${ctid}" "${install_env}" /root/file-upload-install.env --perms 0600
+pct exec "${ctid}" -- tar -xzf /root/file-upload.tar.gz -C /root/file-upload-install
 pct exec "${ctid}" -- bash -c \
-  'set -a; source /root/fire-upload-install.env; set +a; exec bash /root/fire-upload-install/install.sh'
+  'set -a; source /root/file-upload-install.env; set +a; exec bash /root/file-upload-install/install.sh'
 
 lxc_address="$(pct exec "${ctid}" -- hostname -I | awk '{ print $1 }')"
 created_ctid=""
 trap - ERR INT TERM
 
 echo
-echo "Fire Upload was installed successfully."
+echo "File Upload was installed successfully."
 echo "  LXC:           ${ctid}"
 echo "  Local address: ${lxc_address}"
 echo "  Public URL:    ${public_url}"
@@ -496,4 +496,4 @@ if [[ "${network_mode}" == "dhcp" ]]; then
   echo "Reserve ${lxc_address} in the router so it does not change."
 fi
 echo "Forward router TCP ports 80 and 443 to ${lxc_address}."
-echo "Do not expose the Proxmox dashboard or Fire Upload's internal port 8080."
+echo "Do not expose the Proxmox dashboard or File Upload's internal port 8080."

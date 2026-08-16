@@ -1,5 +1,5 @@
 [Unit]
-Description=Refresh Fire Upload DuckDNS address
+Description=Refresh File Upload DuckDNS address
 
 [Timer]
 OnBootSec=1min

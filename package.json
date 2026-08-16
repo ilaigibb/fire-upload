@@ -1,6 +1,6 @@
 {
-  "name": "fire-upload",
-  "version": "0.2.0",
+  "name": "file-upload",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": {

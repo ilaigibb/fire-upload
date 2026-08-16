@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source /etc/fire-upload-duckdns.env
+source /etc/file-upload-duckdns.env
 : "${DUCKDNS_SUBDOMAIN:?DUCKDNS_SUBDOMAIN is required}"
 : "${DUCKDNS_TOKEN:?DUCKDNS_TOKEN is required}"
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Check for Fire Upload updates daily
+Description=Check for File Upload updates daily
 
 [Timer]
 OnBootSec=15min

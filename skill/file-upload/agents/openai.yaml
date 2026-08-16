@@ -1,0 +1,4 @@
+interface:
+  display_name: "File Upload"
+  short_description: "Upload PR artifacts to a public file host"
+  default_prompt: "Use $file-upload to upload this local artifact and format its public URL for a pull request."
